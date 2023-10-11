@@ -125,13 +125,13 @@ public class Calendar extends CordovaPlugin {
       hasReadWritePermission();
       return true;
     } else if (REQUEST_READ_PERMISSION.equals(action)) {
-      requestReadPermission(0);
+      requestReadPermissionCallback(0);
       return true;
     } else if (REQUEST_WRITE_PERMISSION.equals(action)) {
-      requestWritePermission(0);
+      requestWritePermissionCallback(0);
       return true;
     } else if (REQUEST_READWRITE_PERMISSION.equals(action)) {
-      requestReadWritePermission(0);
+      requestReadWritePermissionCallback(0);
       return true;
     }
     return false;
@@ -164,6 +164,18 @@ public class Calendar extends CordovaPlugin {
     requestPermission(requestCode, Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR);
   }
 
+  private void requestReadPermissionCallback(int requestCode) {
+    requestPermissionCallback(requestCode, Manifest.permission.READ_CALENDAR);
+  }
+
+  private void requestWritePermissionCallback(int requestCode) {
+    requestPermissionCallback(requestCode, Manifest.permission.WRITE_CALENDAR);
+  }
+
+  private void requestReadWritePermissionCallback(int requestCode) {
+    requestPermissionCallback(requestCode, Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR);
+  }
+
   private boolean calendarPermissionGranted(String... types) {
     if (Build.VERSION.SDK_INT < 23) {
       return true;
@@ -179,6 +191,14 @@ public class Calendar extends CordovaPlugin {
   private void requestPermission(int requestCode, String... types) {
     if (!calendarPermissionGranted(types)) {
       PermissionHelper.requestPermissions(this, requestCode, types);
+    }
+  }
+
+  private void requestPermissionCallback(int requestCode, String... types) {
+    if (!calendarPermissionGranted(types)) {
+      PermissionHelper.requestPermissions(this, requestCode, types);
+    } else {
+      callback.sendPluginResult(new PluginResult(PluginResult.Status.OK, true));
     }
   }
 
@@ -208,6 +228,8 @@ public class Calendar extends CordovaPlugin {
       listCalendars();
     } else if (requestCode == PERMISSION_REQCODE_LIST_EVENTS_IN_RANGE) {
       listEventsInRange(requestArgs);
+    } else {
+      callback.sendPluginResult(new PluginResult(PluginResult.Status.OK, true));
     }
   }
 
