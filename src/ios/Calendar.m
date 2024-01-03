@@ -571,6 +571,7 @@
       NSMutableDictionary *entry = [[NSMutableDictionary alloc] initWithObjectsAndKeys:
                                     thisCalendar.calendarIdentifier, @"id",
                                     thisCalendar.title, @"name",
+                                    thisCalendar.source.title, @"account",
                                     type, @"type",
                                     nil];
       [finalResults addObject:entry];
