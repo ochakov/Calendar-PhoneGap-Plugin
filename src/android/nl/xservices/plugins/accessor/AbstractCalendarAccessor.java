@@ -135,6 +135,7 @@ public abstract class AbstractCalendarAccessor {
         CALENDARS_NAME,
         CALENDARS_VISIBLE,
         CALENDARS_DISPLAY_NAME,
+        CALENDARS_ACCOUNT,
         EVENTS_ID,
         EVENTS_CALENDAR_ID,
         EVENTS_DESCRIPTION,
@@ -274,6 +275,7 @@ public abstract class AbstractCalendarAccessor {
                         this.getKey(KeyIndex.CALENDARS_ID),
                         this.getKey(KeyIndex.CALENDARS_NAME),
                         this.getKey(KeyIndex.CALENDARS_DISPLAY_NAME),
+                        this.getKey(KeyIndex.CALENDARS_ACCOUNT),
                         this.getKey(KeyIndex.IS_PRIMARY)
                 },
                 this.getKey(KeyIndex.CALENDARS_VISIBLE) + "=1", null, null
@@ -289,6 +291,7 @@ public abstract class AbstractCalendarAccessor {
                 calendar.put("id", cursor.getString(cursor.getColumnIndex(this.getKey(KeyIndex.CALENDARS_ID))));
                 calendar.put("name", cursor.getString(cursor.getColumnIndex(this.getKey(KeyIndex.CALENDARS_NAME))));
                 calendar.put("displayname", cursor.getString(cursor.getColumnIndex(this.getKey(KeyIndex.CALENDARS_DISPLAY_NAME))));
+                calendar.put("account", cursor.getString(cursor.getColumnIndex(this.getKey(KeyIndex.CALENDARS_ACCOUNT))));
                 primaryColumnIndex = cursor.getColumnIndex(this.getKey((KeyIndex.IS_PRIMARY)));
                 if (primaryColumnIndex == -1) {
                     primaryColumnIndex = cursor.getColumnIndex("COALESCE(isPrimary, ownerAccount = account_name)");
