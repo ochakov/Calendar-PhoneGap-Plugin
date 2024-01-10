@@ -422,7 +422,7 @@
   NSArray<EKCalendar *> *calendars = [self.eventStore calendarsForEntityType:EKEntityTypeEvent];
   if (calendars != nil && calendars.count > 0) {
     for (EKCalendar *thisCalendar in calendars) {
-      NSLog(@"Calendar: %@", thisCalendar.title);
+      // NSLog(@"Calendar: %@", thisCalendar.title);
       if ([thisCalendar.title isEqualToString:calendarName]) {
         return thisCalendar;
       }
@@ -463,6 +463,7 @@
                                   event.title, @"title",
                                   event.calendar.title, @"calendar",
                                   event.eventIdentifier , @"id",
+                                  event.URL.absoluteString, @"url",
                                   [df stringFromDate:event.startDate], @"startDate",
                                   [df stringFromDate:event.endDate], @"endDate",
                                   [df stringFromDate:event.lastModifiedDate], @"lastModifiedDate",
