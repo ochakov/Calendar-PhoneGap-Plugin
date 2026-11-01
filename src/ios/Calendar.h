@@ -8,8 +8,10 @@
 @property (nonatomic, retain) EKEventStore* eventStore;
 @property (nonatomic, copy) NSString *interactiveCallbackId;
 
-- (void)initEventStoreWithFullCalendarCapabilities;
-- (void)initEventStoreWithWriteCalendarCapabilities;
+typedef void (^CalendarAccessCompletion)(BOOL granted);
+
+- (void)initEventStoreWithFullCalendarCapabilities:(CalendarAccessCompletion)completion;
+- (void)initEventStoreWithWriteCalendarCapabilities:(CalendarAccessCompletion)completion;
 
 -(NSArray*)findEKEventsWithTitle: (NSString *)title
                         location: (NSString *)location

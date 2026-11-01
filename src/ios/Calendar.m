@@ -18,47 +18,22 @@
  * Init event store with read and write capabilities.
  *
  * Note: This will overwrite the existing event store.
+ *
+ * The request is asynchronous: EventKit calls the completion on an arbitrary queue once the user
+ * has answered the permission prompt (or at once when the status is already known). The main thread
+ * must never wait for it: the prompt cannot be shown while the app is in the background, and a
+ * blocked main thread gets the app killed by the scene-update watchdog after 30 s (0x8BADF00D).
  */
-- (void) initEventStoreWithFullCalendarCapabilities {
+- (void) initEventStoreWithFullCalendarCapabilities:(CalendarAccessCompletion)completion {
   NSLog(@"Initialising calendar event store with full access.");
 
   EKEventStore* eventStoreCandidate = [[EKEventStore alloc] init];
-  __block BOOL accessGranted = NO;
+  void (^handler)(BOOL, NSError *) = [self accessHandlerForStore:eventStoreCandidate description:@"Full" completion:completion];
 
-  dispatch_semaphore_t sema = dispatch_semaphore_create(0);
   if (@available(iOS 17.0, *)) {
-    [eventStoreCandidate requestFullAccessToEventsWithCompletion:^(BOOL granted, NSError *error) {
-      accessGranted = granted;
-
-      if (!accessGranted) {
-        NSLog(@"Full access to the event store not granted. Error: %@", error.localizedDescription);
-      }
-
-      dispatch_semaphore_signal(sema);
-    }];
+    [eventStoreCandidate requestFullAccessToEventsWithCompletion:handler];
   } else {
-    // iOS 16 or lower
-    if([eventStoreCandidate respondsToSelector:@selector(requestAccessToEntityType:completion:)]) {
-      [eventStoreCandidate requestAccessToEntityType:EKEntityTypeEvent completion:^(BOOL granted, NSError *error) {
-        accessGranted = granted;
-
-        if (!accessGranted) {
-          NSLog(@"Full access to the event store not granted. Error: %@", error.localizedDescription);
-        }
-
-        dispatch_semaphore_signal(sema);
-      }];
-    } else {
-      // iOS 5 or lower
-      accessGranted = YES;
-      dispatch_semaphore_signal(sema);
-    }
-  }
-  dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
-
-  if (accessGranted) {
-    self.eventStore = eventStoreCandidate;
-    NSLog(@"Full access to the event store granted and eventStore initialized.");
+    [self requestLegacyAccessToStore:eventStoreCandidate handler:handler];
   }
 }
 
@@ -68,47 +43,52 @@
  * Note: This will overwrite the existing event store, so you may not be able to read events after requesting write
  * only permission, even if you have previously requested read and write permission.
  */
-- (void) initEventStoreWithWriteCalendarCapabilities {
+- (void) initEventStoreWithWriteCalendarCapabilities:(CalendarAccessCompletion)completion {
   NSLog(@"Initialising calendar event store with write access.");
 
   EKEventStore* eventStoreCandidate = [[EKEventStore alloc] init];
-  __block BOOL accessGranted = NO;
+  void (^handler)(BOOL, NSError *) = [self accessHandlerForStore:eventStoreCandidate description:@"Write" completion:completion];
 
-  dispatch_semaphore_t sema = dispatch_semaphore_create(0);
   if (@available(iOS 17.0, *)) {
-    [eventStoreCandidate requestWriteOnlyAccessToEventsWithCompletion:^(BOOL granted, NSError *error) {
-      accessGranted = granted;
-
-      if (!accessGranted) {
-        NSLog(@"Write access to the event store not granted. Error: %@", error.localizedDescription);
-      }
-
-      dispatch_semaphore_signal(sema);
-    }];
+    [eventStoreCandidate requestWriteOnlyAccessToEventsWithCompletion:handler];
   } else {
-    // iOS 16 or lower
-    if([eventStoreCandidate respondsToSelector:@selector(requestAccessToEntityType:completion:)]) {
-      [eventStoreCandidate requestAccessToEntityType:EKEntityTypeEvent completion:^(BOOL granted, NSError *error) {
-        accessGranted = granted;
-
-        if (!accessGranted) {
-          NSLog(@"Write access to the event store not granted after requesting full access for iOS <= 16. Error: %@", error.localizedDescription);
-        }
-
-        dispatch_semaphore_signal(sema);
-      }];
-    } else {
-      // iOS 5 or lower
-      accessGranted = YES;
-      dispatch_semaphore_signal(sema);
-    }
+    [self requestLegacyAccessToStore:eventStoreCandidate handler:handler];
   }
-  dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+}
 
-  if (accessGranted) {
-    self.eventStore = eventStoreCandidate;
-    NSLog(@"Write access to the event store granted and eventStore initialized.");
+/**
+ * iOS 16 or lower: one permission covers reading and writing.
+ */
+- (void) requestLegacyAccessToStore:(EKEventStore *)eventStoreCandidate handler:(void (^)(BOOL granted, NSError *error))handler {
+  if ([eventStoreCandidate respondsToSelector:@selector(requestAccessToEntityType:completion:)]) {
+    [eventStoreCandidate requestAccessToEntityType:EKEntityTypeEvent completion:handler];
+  } else {
+    // iOS 5 or lower
+    handler(YES, nil);
   }
+}
+
+/**
+ * Builds the EventKit completion handler: installs the store when access was granted and then
+ * calls the plugin's completion. Both happen on the main thread, where Cordova dispatches the
+ * commands that read self.eventStore.
+ */
+- (void (^)(BOOL granted, NSError *error)) accessHandlerForStore:(EKEventStore *)eventStoreCandidate
+                                                      description:(NSString *)description
+                                                       completion:(CalendarAccessCompletion)completion {
+  return ^(BOOL granted, NSError *error) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (granted) {
+        self.eventStore = eventStoreCandidate;
+        NSLog(@"%@ access to the event store granted and eventStore initialized.", description);
+      } else {
+        NSLog(@"%@ access to the event store not granted. Error: %@", description, error.localizedDescription);
+      }
+      if (completion) {
+        completion(granted);
+      }
+    });
+  };
 }
 
 #pragma mark Helper Functions
@@ -1127,8 +1107,9 @@
 }
 
 - (void)requestReadPermission:(CDVInvokedUrlCommand*)command {
-  CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:[self requestFullCalendarAccess]];
-  [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+  [self initEventStoreWithFullCalendarCapabilities:^(BOOL granted) {
+    [self sendAccessResult:granted toCallbackId:command.callbackId];
+  }];
 }
 
 - (void)hasWritePermission:(CDVInvokedUrlCommand*)command {
@@ -1137,8 +1118,9 @@
 }
 
 - (void)requestWritePermission:(CDVInvokedUrlCommand*)command {
-  CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:[self requestWriteCalendarAccess]];
-  [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+  [self initEventStoreWithWriteCalendarCapabilities:^(BOOL granted) {
+    [self sendAccessResult:granted toCallbackId:command.callbackId];
+  }];
 }
 
 - (void)hasReadWritePermission:(CDVInvokedUrlCommand*)command {
@@ -1147,18 +1129,18 @@
 }
 
 - (void)requestReadWritePermission:(CDVInvokedUrlCommand*)command {
-  CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:[self requestFullCalendarAccess]];
-  [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+  [self initEventStoreWithFullCalendarCapabilities:^(BOOL granted) {
+    [self sendAccessResult:granted toCallbackId:command.callbackId];
+  }];
 }
 
--(CDVCommandStatus)requestFullCalendarAccess{
-  [self initEventStoreWithFullCalendarCapabilities];
-  return (self.eventStore != nil) ? CDVCommandStatus_OK : CDVCommandStatus_ERROR;
-}
-
--(CDVCommandStatus)requestWriteCalendarAccess{
-  [self initEventStoreWithWriteCalendarCapabilities];
-  return (self.eventStore != nil) ? CDVCommandStatus_OK : CDVCommandStatus_ERROR;
+/**
+ * Answers a request*Permission call once EventKit has reported the outcome: success when access
+ * was granted, error otherwise.
+ */
+- (void)sendAccessResult:(BOOL)granted toCallbackId:(NSString *)callbackId {
+  CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:(granted ? CDVCommandStatus_OK : CDVCommandStatus_ERROR)];
+  [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
 }
 
 @end
